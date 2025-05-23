@@ -4,294 +4,401 @@ import bcrypt
 import pandas as pd
 import uuid
 from datetime import datetime, timedelta
+import logging
 
-# Database setup
+# Set up logging to capture errors
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+# Database setup with error handling
 def init_db():
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        username TEXT UNIQUE,
-        password TEXT,
-        is_admin BOOLEAN
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS orders (
-        id TEXT PRIMARY KEY,
-        user_id TEXT,
-        business_name TEXT,
-        email TEXT,
-        phone TEXT,
-        address TEXT,
-        created_at TEXT,
-        archived BOOLEAN DEFAULT 0,
-        FOREIGN KEY(user_id) REFERENCES users(id)
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS services (
-        id TEXT PRIMARY KEY,
-        order_id TEXT,
-        name TEXT,
-        stage TEXT,
-        is_template BOOLEAN,
-        template_services TEXT,
-        FOREIGN KEY(order_id) REFERENCES orders(id)
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS stages (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        position INTEGER
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS services_list (
-        id TEXT PRIMARY KEY,
-        name TEXT
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS custom_fields (
-        id TEXT PRIMARY KEY,
-        name TEXT
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS password_resets (
-        id TEXT PRIMARY KEY,
-        user_id TEXT,
-        temp_password TEXT,
-        requested_at TEXT,
-        approved BOOLEAN,
-        FOREIGN KEY(user_id) REFERENCES users(id)
-    )''')
-    
-    c.execute('''CREATE TABLE IF NOT EXISTS changes (
-        id TEXT PRIMARY KEY,
-        order_id TEXT,
-        user_id TEXT,
-        description TEXT,
-        timestamp TEXT,
-        FOREIGN KEY(order_id) REFERENCES orders(id),
-        FOREIGN KEY(user_id) REFERENCES users(id)
-    )''')
-    
-    c.execute("SELECT COUNT(*) FROM stages")
-    if c.fetchone()[0] == 0:
-        default_stages = [("To Do", 1), ("In Progress", 2), ("Done", 3)]
-        c.executemany("INSERT INTO stages (id, name, position) VALUES (?, ?, ?)", 
-                     [(str(uuid.uuid4()), name, pos) for name, pos in default_stages])
-    
-    c.execute("SELECT COUNT(*) FROM services_list")
-    if c.fetchone()[0] == 0:
-        default_services = [("Research",), ("Design",), ("Development",)]
-        c.executemany("INSERT INTO services_list (id, name) VALUES (?, ?)", 
-                     [(str(uuid.uuid4()), name) for name in default_services])
-    
-    c.execute("SELECT COUNT(*) FROM users WHERE username = ?", ('chadillac',))
-    if c.fetchone()[0] == 0:
-        hashed = bcrypt.hashpw('roostersgrin'.encode('utf-8'), bcrypt.gensalt())
-        c.execute("INSERT INTO users (id, username, password, is_admin) VALUES (?, ?, ?, ?)",
-                 (str(uuid.uuid4()), 'chadillac', hashed, True))
-    
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            username TEXT UNIQUE,
+            password TEXT,
+            is_admin BOOLEAN
+        )''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS orders (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            business_name TEXT,
+            email TEXT,
+            phone TEXT,
+            address TEXT,
+            created_at TEXT,
+            archived BOOLEAN DEFAULT 0,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS services (
+            id TEXT PRIMARY KEY,
+            order_id TEXT,
+            name TEXT,
+            stage TEXT,
+            is_template BOOLEAN,
+            template_services TEXT,
+            FOREIGN KEY(order_id) REFERENCES orders(id)
+        )''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS stages (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            position INTEGER
+        )''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS services_list (
+            id TEXT PRIMARY KEY,
+            name TEXT
+        )''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS custom_fields (
+            id TEXT PRIMARY KEY,
+            name TEXT
+        )''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS password_resets (
+            id TEXT PRIMARY KEY,
+            user_id TEXT,
+            temp_password TEXT,
+            requested_at TEXT,
+            approved BOOLEAN,
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )''')
+        
+        c.execute('''CREATE TABLE IF NOT EXISTS changes (
+            id TEXT PRIMARY KEY,
+            order_id TEXT,
+            user_id TEXT,
+            description TEXT,
+            timestamp TEXT,
+            FOREIGN KEY(order_id) REFERENCES orders(id),
+            FOREIGN KEY(user_id) REFERENCES users(id)
+        )''')
+        
+        c.execute("SELECT COUNT(*) FROM stages")
+        if c.fetchone()[0] == 0:
+            default_stages = [("To Do", 1), ("In Progress", 2), ("Done", 3)]
+            c.executemany("INSERT INTO stages (id, name, position) VALUES (?, ?, ?)", 
+                         [(str(uuid.uuid4()), name, pos) for name, pos in default_stages])
+        
+        c.execute("SELECT COUNT(*) FROM services_list")
+        if c.fetchone()[0] == 0:
+            default_services = [("Research",), ("Design",), ("Development",)]
+            c.executemany("INSERT INTO services_list (id, name) VALUES (?, ?)", 
+                         [(str(uuid.uuid4()), name) for name in default_services])
+        
+        c.execute("SELECT COUNT(*) FROM users WHERE username = ?", ('chadillac',))
+        if c.fetchone()[0] == 0:
+            hashed = bcrypt.hashpw('roostersgrin'.encode('utf-8'), bcrypt.gensalt())
+            c.execute("INSERT INTO users (id, username, password, is_admin) VALUES (?, ?, ?, ?)",
+                     (str(uuid.uuid4()), 'chadillac', hashed, True))
+        
+        conn.commit()
+        conn.close()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing database: {str(e)}")
+        st.error(f"Failed to initialize database: {str(e)}")
+        raise
 
 # Helper functions
 def check_login(username, password):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT id, password, is_admin FROM users WHERE username = ?", (username,))
-    user = c.fetchone()
-    conn.close()
-    if user and bcrypt.checkpw(password.encode('utf-8'), user[1]):
-        return {'id': user[0], 'username': username, 'is_admin': user[2]}
-    return None
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT id, password, is_admin FROM users WHERE username = ?", (username,))
+        user = c.fetchone()
+        conn.close()
+        if user and bcrypt.checkpw(password.encode('utf-8'), user[1]):
+            return {'id': user[0], 'username': username, 'is_admin': user[2]}
+        return None
+    except Exception as e:
+        logger.error(f"Error in check_login: {str(e)}")
+        st.error(f"Login error: {str(e)}")
+        return None
 
 def get_stages():
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT id, name, position FROM stages ORDER BY position")
-    stages = c.fetchall()
-    conn.close()
-    return stages
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT id, name, position FROM stages ORDER BY position")
+        stages = c.fetchall()
+        conn.close()
+        return stages
+    except Exception as e:
+        logger.error(f"Error in get_stages: {str(e)}")
+        st.error(f"Error fetching stages: {str(e)}")
+        return []
 
 def get_user_orders(user_id, is_admin=False, include_archived=False):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    if is_admin and include_archived:
-        c.execute("SELECT * FROM orders")
-    elif is_admin:
-        c.execute("SELECT * FROM orders WHERE archived = 0")
-    else:
-        c.execute("SELECT * FROM orders WHERE user_id = ? AND archived = 0", (user_id,))
-    orders = c.fetchall()
-    conn.close()
-    return orders
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        if is_admin and include_archived:
+            c.execute("SELECT * FROM orders")
+        elif is_admin:
+            c.execute("SELECT * FROM orders WHERE archived = 0")
+        else:
+            c.execute("SELECT * FROM orders WHERE user_id = ? AND archived = 0", (user_id,))
+        orders = c.fetchall()
+        conn.close()
+        return orders
+    except Exception as e:
+        logger.error(f"Error in get_user_orders: {str(e)}")
+        st.error(f"Error fetching user orders: {str(e)}")
+        return []
 
 def get_all_users():
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT id, username FROM users")
-    users = c.fetchall()
-    conn.close()
-    return users
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT id, username FROM users")
+        users = c.fetchall()
+        conn.close()
+        return users
+    except Exception as e:
+        logger.error(f"Error in get_all_users: {str(e)}")
+        st.error(f"Error fetching users: {str(e)}")
+        return []
 
 def get_orders_for_user(user_id):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT * FROM orders WHERE user_id = ? AND archived = 0", (user_id,))
-    orders = c.fetchall()
-    conn.close()
-    return orders
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT * FROM orders WHERE user_id = ? AND archived = 0", (user_id,))
+        orders = c.fetchall()
+        conn.close()
+        return orders
+    except Exception as e:
+        logger.error(f"Error in get_orders_for_user: {str(e)}")
+        st.error(f"Error fetching orders for user: {str(e)}")
+        return []
 
 def get_all_active_orders():
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT o.*, u.username FROM orders o JOIN users u ON o.user_id = u.id WHERE o.archived = 0")
-    orders = c.fetchall()
-    conn.close()
-    return orders
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT o.*, u.username FROM orders o JOIN users u ON o.user_id = u.id WHERE o.archived = 0")
+        orders = c.fetchall()
+        conn.close()
+        return orders
+    except Exception as e:
+        logger.error(f"Error in get_all_active_orders: {str(e)}")
+        st.error(f"Error fetching all active orders: {str(e)}")
+        return []
 
 def get_order_services(order_id):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT id, name, stage, is_template, template_services FROM services WHERE order_id = ?", (order_id,))
-    services = c.fetchall()
-    conn.close()
-    return services
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT id, name, stage, is_template, template_services FROM services WHERE order_id = ?", (order_id,))
+        services = c.fetchall()
+        conn.close()
+        return services
+    except Exception as e:
+        logger.error(f"Error in get_order_services: {str(e)}")
+        st.error(f"Error fetching order services: {str(e)}")
+        return []
 
 def get_order_stage(order_id):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT s.stage, st.position FROM services s JOIN stages st ON s.stage = st.id WHERE s.order_id = ? ORDER BY st.position DESC LIMIT 1", (order_id,))
-    result = c.fetchone()
-    conn.close()
-    return result[0] if result else get_stages()[0][0]
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT s.stage, st.position FROM services s JOIN stages st ON s.stage = st.id WHERE s.order_id = ? ORDER BY st.position DESC LIMIT 1", (order_id,))
+        result = c.fetchone()
+        conn.close()
+        return result[0] if result else get_stages()[0][1]
+    except Exception as e:
+        logger.error(f"Error in get_order_stage: {str(e)}")
+        st.error(f"Error fetching order stage: {str(e)}")
+        return get_stages()[0][1] if get_stages() else "To Do"
 
 def get_order_progress(order_id):
-    services = get_order_services(order_id)
-    if not services:
+    try:
+        services = get_order_services(order_id)
+        if not services:
+            return 0
+        stages = get_stages()
+        stage_positions = {stage[1]: stage[2] for stage in stages}
+        total_stages = max(stage_positions.values())
+        total_position = 0
+        for service in services:
+            stage_name = service[2]
+            total_position += stage_positions.get(stage_name, 1)
+        avg_position = total_position / len(services)
+        progress = (avg_position / total_stages) * 100
+        return round(progress, 2)
+    except Exception as e:
+        logger.error(f"Error in get_order_progress: {str(e)}")
+        st.error(f"Error calculating order progress: {str(e)}")
         return 0
-    stages = get_stages()
-    stage_positions = {stage[1]: stage[2] for stage in stages}
-    total_stages = max(stage_positions.values())
-    total_position = 0
-    for service in services:
-        stage_name = service[2]
-        total_position += stage_positions.get(stage_name, 1)
-    avg_position = total_position / len(services)
-    progress = (avg_position / total_stages) * 100
-    return round(progress, 2)
 
 def get_services_list():
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT id, name FROM services_list")
-    services = c.fetchall()
-    conn.close()
-    return services
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT id, name FROM services_list")
+        services = c.fetchall()
+        conn.close()
+        return services
+    except Exception as e:
+        logger.error(f"Error in get_services_list: {str(e)}")
+        st.error(f"Error fetching services list: {str(e)}")
+        return []
 
 def get_templates():
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT id, name, template_services FROM services WHERE is_template = ?", (True,))
-    templates = c.fetchall()
-    conn.close()
-    return templates
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT id, name, template_services FROM services WHERE is_template = ?", (True,))
+        templates = c.fetchall()
+        conn.close()
+        return templates
+    except Exception as e:
+        logger.error(f"Error in get_templates: {str(e)}")
+        st.error(f"Error fetching templates: {str(e)}")
+        return []
 
 def add_custom_field(field_name):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO custom_fields (id, name) VALUES (?, ?)", (str(uuid.uuid4()), field_name))
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("INSERT INTO custom_fields (id, name) VALUES (?, ?)", (str(uuid.uuid4()), field_name))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error in add_custom_field: {str(e)}")
+        st.error(f"Error adding custom field: {str(e)}")
 
 def request_password_reset(user_id):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    temp_password = str(uuid.uuid4())[:8]
-    c.execute("INSERT INTO password_resets (id, user_id, temp_password, requested_at, approved) VALUES (?, ?, ?, ?, ?)",
-             (str(uuid.uuid4()), user_id, temp_password, datetime.now().isoformat(), False))
-    conn.commit()
-    conn.close()
-    return temp_password
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        temp_password = str(uuid.uuid4())[:8]
+        c.execute("INSERT INTO password_resets (id, user_id, temp_password, requested_at, approved) VALUES (?, ?, ?, ?, ?)",
+                 (str(uuid.uuid4()), user_id, temp_password, datetime.now().isoformat(), False))
+        conn.commit()
+        conn.close()
+        return temp_password
+    except Exception as e:
+        logger.error(f"Error in request_password_reset: {str(e)}")
+        st.error(f"Error requesting password reset: {str(e)}")
+        return None
 
 def approve_password_reset(reset_id, user_id):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT temp_password FROM password_resets WHERE id = ?", (reset_id,))
-    temp_password = c.fetchone()[0]
-    hashed = bcrypt.hashpw(temp_password.encode('utf-8'), bcrypt.gensalt())
-    c.execute("UPDATE users SET password = ? WHERE id = ?", (hashed, user_id))
-    c.execute("UPDATE password_resets SET approved = ? WHERE id = ?", (True, reset_id))
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT temp_password FROM password_resets WHERE id = ?", (reset_id,))
+        temp_password = c.fetchone()[0]
+        hashed = bcrypt.hashpw(temp_password.encode('utf-8'), bcrypt.gensalt())
+        c.execute("UPDATE users SET password = ? WHERE id = ?", (hashed, user_id))
+        c.execute("UPDATE password_resets SET approved = ? WHERE id = ?", (True, reset_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error in approve_password_reset: {str(e)}")
+        st.error(f"Error approving password reset: {str(e)}")
 
 def log_change(order_id, user_id, description):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("INSERT INTO changes (id, order_id, user_id, description, timestamp) VALUES (?, ?, ?, ?, ?)",
-             (str(uuid.uuid4()), order_id, user_id, description, datetime.now().isoformat()))
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("INSERT INTO changes (id, order_id, user_id, description, timestamp) VALUES (?, ?, ?, ?, ?)",
+                 (str(uuid.uuid4()), order_id, user_id, description, datetime.now().isoformat()))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error in log_change: {str(e)}")
+        st.error(f"Error logging change: {str(e)}")
 
 def get_days_since_last_change(order_id):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT timestamp FROM changes WHERE order_id = ? ORDER BY timestamp DESC LIMIT 1", (order_id,))
-    last_change = c.fetchone()
-    conn.close()
-    if last_change:
-        last_change_time = datetime.fromisoformat(last_change[0])
-        days_diff = (datetime.now() - last_change_time).days
-        return days_diff
-    return None
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT timestamp FROM changes WHERE order_id = ? ORDER BY timestamp DESC LIMIT 1", (order_id,))
+        last_change = c.fetchone()
+        conn.close()
+        if last_change:
+            last_change_time = datetime.fromisoformat(last_change[0])
+            days_diff = (datetime.now() - last_change_time).days
+            return days_diff
+        return None
+    except Exception as e:
+        logger.error(f"Error in get_days_since_last_change: {str(e)}")
+        st.error(f"Error calculating days since last change: {str(e)}")
+        return None
 
 def get_order_changes(order_id):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT description, timestamp FROM changes WHERE order_id = ? ORDER BY timestamp DESC", (order_id,))
-    changes = c.fetchall()
-    conn.close()
-    return changes
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT description, timestamp FROM changes WHERE order_id = ? ORDER BY timestamp DESC", (order_id,))
+        changes = c.fetchall()
+        conn.close()
+        return changes
+    except Exception as e:
+        logger.error(f"Error in get_order_changes: {str(e)}")
+        st.error(f"Error fetching order changes: {str(e)}")
+        return []
 
 def archive_order(order_id, user_id):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("UPDATE orders SET archived = 1 WHERE id = ?", (order_id,))
-    log_change(order_id, user_id, "Order archived")
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("UPDATE orders SET archived = 1 WHERE id = ?", (order_id,))
+        log_change(order_id, user_id, "Order archived")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error in archive_order: {str(e)}")
+        st.error(f"Error archiving order: {str(e)}")
 
 def restore_order(order_id, user_id):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("UPDATE orders SET archived = 0 WHERE id = ?", (order_id,))
-    log_change(order_id, user_id, "Order restored")
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("UPDATE orders SET archived = 0 WHERE id = ?", (order_id,))
+        log_change(order_id, user_id, "Order restored")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error in restore_order: {str(e)}")
+        st.error(f"Error restoring order: {str(e)}")
 
 def add_service_to_order(order_id, user_id, service_id, template_id=None):
-    conn = sqlite3.connect('orders.db')
-    c = conn.cursor()
-    c.execute("SELECT name FROM services_list WHERE id = ?", (service_id,))
-    service_name = c.fetchone()[0]
-    template_services = ""
-    if template_id:
-        c.execute("SELECT template_services FROM services WHERE id = ?", (template_id,))
-        template_services = c.fetchone()[0]
-        c.execute("INSERT INTO services (id, order_id, name, stage, is_template, template_services) VALUES (?, ?, ?, ?, ?, ?)",
-                 (str(uuid.uuid4()), order_id, service_name, get_stages()[0][1], True, template_services))
-    else:
-        c.execute("INSERT INTO services (id, order_id, name, stage, is_template) VALUES (?, ?, ?, ?, ?)",
-                 (str(uuid.uuid4()), order_id, service_name, get_stages()[0][1], False))
-    log_change(order_id, user_id, f"Service {service_name} added")
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect('orders.db')
+        c = conn.cursor()
+        c.execute("SELECT name FROM services_list WHERE id = ?", (service_id,))
+        service_name = c.fetchone()[0]
+        template_services = ""
+        if template_id:
+            c.execute("SELECT template_services FROM services WHERE id = ?", (template_id,))
+            template_services = c.fetchone()[0]
+            c.execute("INSERT INTO services (id, order_id, name, stage, is_template, template_services) VALUES (?, ?, ?, ?, ?, ?)",
+                     (str(uuid.uuid4()), order_id, service_name, get_stages()[0][1], True, template_services))
+        else:
+            c.execute("INSERT INTO services (id, order_id, name, stage, is_template) VALUES (?, ?, ?, ?, ?)",
+                     (str(uuid.uuid4()), order_id, service_name, get_stages()[0][1], False))
+        log_change(order_id, user_id, f"Service {service_name} added")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Error in add_service_to_order: {str(e)}")
+        st.error(f"Error adding service to order: {str(e)}")
 
 # Streamlit app
+logger.info("Starting Streamlit app")
 st.set_page_config(page_title="Order Tracking App", layout="wide")
 
 # Initialize database
+logger.info("Initializing database")
 init_db()
 
 # Session state for authentication
@@ -335,6 +442,7 @@ st.markdown("""
 
 # Login page
 if not st.session_state.user:
+    logger.info("Displaying login page")
     st.markdown('<div class="flex justify-center items-center min-h-screen bg-gray-100">', unsafe_allow_html=True)
     st.markdown('<div class="bg-white p-8 rounded-xl shadow-md w-full max-w-md">', unsafe_allow_html=True)
     st.markdown('<h1 class="text-2xl font-bold text-gray-800 mb-6 text-center">Login</h1>', unsafe_allow_html=True)
@@ -373,6 +481,7 @@ else:
     is_admin = st.session_state.user['is_admin']
     
     # Sidebar
+    logger.info("Displaying sidebar")
     sidebar_html = """
         <div class="flex min-h-screen">
             <div class="w-64 sidebar text-white p-6">
@@ -415,6 +524,7 @@ else:
 
     # Dashboard Page
     if page == 'dashboard':
+        logger.info("Displaying dashboard page")
         st.markdown('<h1 class="text-3xl font-bold text-gray-800 mb-6">Dashboard</h1>', unsafe_allow_html=True)
         orders = get_user_orders(user_id, is_admin)
         active_orders = len(orders)
@@ -489,6 +599,7 @@ else:
 
     # Orders Page
     elif page == 'orders':
+        logger.info("Displaying orders page")
         st.markdown('<h1 class="text-3xl font-bold text-gray-800 mb-6">Orders</h1>', unsafe_allow_html=True)
         
         # Create New Order
@@ -575,6 +686,7 @@ else:
 
     # Admin Controls Page
     elif page == 'admin' and is_admin:
+        logger.info("Displaying admin controls page")
         st.markdown('<h1 class="text-3xl font-bold text-gray-800 mb-6">Admin Controls</h1>', unsafe_allow_html=True)
         
         st.markdown('<div class="bg-white p-8 rounded-xl shadow-md mb-8 card">', unsafe_allow_html=True)
@@ -680,6 +792,7 @@ else:
 
     # Admin Dashboard Page
     elif page == 'admin-dashboard' and is_admin and username == 'chadillac':
+        logger.info("Displaying admin dashboard page")
         st.markdown('<h1 class="text-3xl font-bold text-gray-800 mb-6">Admin Dashboard</h1>', unsafe_allow_html=True)
         st.markdown(f'<p class="text-gray-600 mb-6">Logged in as: {username}</p>', unsafe_allow_html=True)
 
